@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}
+Tour Guide Matching Results
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>Tour Guide Matching Results</h1>
+    <p class="mt-4">Your matches have been generated successfully. You can view them below or download the CSV file:</p>
+
+    <!-- Table Placeholder -->
+    <table id="results-table" class="display" style="width:100%"></table>
+
+    <!-- Download and Generate More Matches -->
+    <a href="{{ url_for('download_file', filename=filename) }}" class="btn btn-primary mt-3">Download Matched Students CSV</a>
+    <a href="/" class="btn btn-secondary mt-3">Generate More Matches</a>
+</div>
+{% endblock %}
