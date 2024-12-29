@@ -4,6 +4,8 @@ from openai import OpenAI
 import os
 from celery import Celery, current_task
 from dotenv import load_dotenv
+import pandas as pd
+from gpt_utils import generate_match_explanation
 
 load_dotenv()
 
@@ -114,3 +116,18 @@ def delete_files(file_paths):
                 print(f"Deleted file: {file_path}")
             except Exception as e:
                 print(f"Error deleting file {file_path}: {e}")
+
+
+def append_match_explanations(matches_df):
+    """
+    Add GPT-generated match explanations to the dataframe woohooo.
+    """
+    explanations = []
+    for index, row in matches_df.iterrows():
+        guide = row["Guide Profile"]  # Adjust column name as needed
+        student = row["Student Profile"]  # Adjust column name as needed
+        explanation = generate_match_explanation(guide, student)
+        explanations.append(explanation)
+
+    matches_df["Match Explanation"] = explanations
+    return matches_df
