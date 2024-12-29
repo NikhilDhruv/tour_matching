@@ -5,6 +5,12 @@ from celery import Celery
 from dotenv import load_dotenv
 import openai
 from gpt_utils import generate_match_explanation
+from openai import OpenAI
+
+
+load_dotenv()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 
 # Load environment variables from .env file
 load_dotenv()
@@ -50,15 +56,14 @@ def format_row(row):
     return ', '.join([f"{col}: {row[col]}" for col in columns_to_merge if pd.notna(row[col])])
 
 def api_call(row):
-    try:
-        response = openai.Embedding.create(
-            model="text-embedding-ada-002",
-            input=[row]  # Wrap row in a list
-        )
-        return response['data'][0]['embedding']
-    except openai.error.OpenAIError as e:
-        print(f"Error generating embedding for input: {row}, Error: {e}")
-        return None
+    response = client.embeddings.create(
+        model="text-embedding-ada-002",
+        input=[row]  # Input must be a list of strings
+    )
+    return response.data[0].embedding
+
+
+
 
 @celery_app.task
 def generate_embeddings_task(prospective_path, current_path):
