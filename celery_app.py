@@ -1,132 +1,148 @@
-from flask import Flask, redirect, url_for, render_template, request, jsonify, send_from_directory, send_file
-from celery_app import generate_embeddings_task, delete_files
 import os
 import pandas as pd
-from gpt_utils import generate_match_explanation, append_match_explanations
-import logging
+import numpy as np
+from celery import Celery
 from dotenv import load_dotenv
+import openai
+from gpt_utils import generate_match_explanation
 
-# Load environment variables
+# Load environment variables from .env file
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+# Initialize OpenAI API key
+openai.api_key = os.getenv("OPENAI_API_KEY")
+if not openai.api_key:
+    raise ValueError("OPENAI_API_KEY is not set. Please check your .env file.")
 
-# Initialize Flask app
-app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = './uploads'
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+# Configure Celery with Redis as the broker and backend
+celery_app = Celery(
+    'tasks',
+    broker='redis://localhost:6379/0',  # Redis broker URL
+    backend='redis://localhost:6379/0'  # Redis backend URL
+)
 
-@app.route('/')
-def home():
-    return render_template("index.html")
+# Helper function for cosine similarity
+def cosine_similarity(vec1, vec2):
+    if not vec1 or not vec2:
+        return 0
+    vec1 = np.array(vec1)
+    vec2 = np.array(vec2)
+    return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
 
-@app.route('/process-matches', methods=['POST'])
-def process_matches():
+# Columns to merge into a single string for embedding generation
+columns_to_merge = [
+    'Res Status',
+    'Person Sex',
+    'Person Academic Interests',
+    'Person Extra-Curricular Interest',
+    'Sport1',
+    'Sport2',
+    'Sport3',
+    'City',
+    'State/Region',
+    'Country',
+    'School',
+    'Person Race',
+    'Person Hispanic'
+]
+
+def format_row(row):
+    return ', '.join([f"{col}: {row[col]}" for col in columns_to_merge if pd.notna(row[col])])
+
+def api_call(row):
     try:
-        file = request.files.get('file')  # Upload CSV file
+        response = openai.Embedding.create(
+            model="text-embedding-ada-002",
+            input=[row]  # Wrap row in a list
+        )
+        return response['data'][0]['embedding']
+    except openai.error.OpenAIError as e:
+        print(f"Error generating embedding for input: {row}, Error: {e}")
+        return None
 
-        if not file:
-            return jsonify({"error": "No file uploaded"}), 400
+@celery_app.task
+def generate_embeddings_task(prospective_path, current_path):
+    prospective_df = pd.read_csv(prospective_path)
+    current_df = pd.read_csv(current_path)
 
-        matches_df = pd.read_csv(file)
+    # Validate required columns
+    required_columns = set(columns_to_merge + ["YOG", "Slate ID"])
+    if not required_columns.issubset(set(prospective_df.columns)) or not required_columns.issubset(set(current_df.columns)):
+        raise ValueError("CSV files are missing required columns.")
 
-        # Generate GPT explanations
-        updated_df = append_match_explanations(matches_df)
+    # Create text queries for embedding generation
+    prospective_df['Text Query'] = prospective_df.apply(format_row, axis=1)
+    current_df['Text Query'] = current_df.apply(format_row, axis=1)
 
-        # Save the updated CSV
-        output_path = os.path.join(app.config['UPLOAD_FOLDER'], "updated_matches.csv")
-        updated_df.to_csv(output_path, index=False)
+    # Generate embeddings using OpenAI API
+    prospective_df['Embeddings'] = prospective_df['Text Query'].apply(lambda x: api_call(x) or [])
+    current_df['Embeddings'] = current_df['Text Query'].apply(lambda x: api_call(x) or [])
 
-        return send_file(output_path, as_attachment=True)
+    # Add columns for top suggestions
+    prospective_df['suggestion_1'] = np.nan
+    prospective_df['suggestion_2'] = np.nan
+    prospective_df['suggestion_3'] = np.nan
 
-    except Exception as e:
-        logging.error(f"Error in process_matches: {e}")
-        return jsonify({"error": "Failed to process matches"}), 500
+    # Iterate over prospective students to find top matches
+    for i, row in prospective_df.iterrows():
+        # Filter current students by gender and Year of Graduation (YOG)
+        filtered_current_df = current_df[
+            (current_df["Person Sex"] == row["Person Sex"]) &
+            (current_df["YOG"] == row["YOG"])
+        ]
 
-@app.route('/match_students', methods=['POST'])
-def match_students():
-    try:
-        prospective_file = request.files.get("prospective_students_file")
-        current_file = request.files.get("current_students_file")
+        if filtered_current_df.empty:
+            continue
 
-        if not prospective_file or not current_file:
-            return jsonify({"error": "Both files are required!"}), 400
+        # Calculate cosine similarities
+        similarities = filtered_current_df['Embeddings'].apply(
+            lambda x: cosine_similarity(row['Embeddings'], x)
+        )
 
-        prospective_path = os.path.join(app.config['UPLOAD_FOLDER'], "prospective_students.csv")
-        current_path = os.path.join(app.config['UPLOAD_FOLDER'], "current_students.csv")
+        # Add similarities to the dataframe
+        filtered_current_df = filtered_current_df.assign(similarity=similarities)
 
-        # Save the uploaded files
-        prospective_file.save(prospective_path)
-        current_file.save(current_path)
+        # Sort by similarity and get top 3 matches
+        top_matches = filtered_current_df.sort_values(by="similarity", ascending=False).head(3)
+        top_suggestions = top_matches["Slate ID"].values
 
-        # Pass file paths to the Celery task
-        task = generate_embeddings_task.delay(prospective_path, current_path)
-        delete_files.apply_async(args=[[prospective_path, current_path]], countdown=3600)
-        logging.info("Task ID: %s", task.id)
+        # Update suggestions in the prospective dataframe
+        prospective_df.at[i, "suggestion_1"] = top_suggestions[0] if len(top_suggestions) > 0 else np.nan
+        prospective_df.at[i, "suggestion_2"] = top_suggestions[1] if len(top_suggestions) > 1 else np.nan
+        prospective_df.at[i, "suggestion_3"] = top_suggestions[2] if len(top_suggestions) > 2 else np.nan
 
-        return render_template("loading.html", task_id=task.id)
+    # Drop embeddings and queries for the final output
+    prospective_df.drop(columns=["Embeddings", "Text Query"], inplace=True)
 
-    except Exception as e:
-        logging.error(f"Error in match_students: {e}")
-        return jsonify({"error": "Failed to process student matching"}), 500
+    # Save the results to a CSV file
+    output_path = os.path.join(os.path.dirname(prospective_path), "matched_students.csv")
+    prospective_df.to_csv(output_path, index=False)
 
-@app.route('/task_status/<task_id>')
-def task_status(task_id):
-    try:
-        task = generate_embeddings_task.AsyncResult(task_id)
-        logging.info("Task ID: %s", task_id)
-        logging.info("Task State: %s", task.state)
+    return {"csv_path": output_path}
 
-        if task.state == 'SUCCESS':
-            csv_path = task.result['csv_path']
-            delete_files.apply_async(args=[[csv_path]], countdown=3600)
-            filename = os.path.basename(csv_path)
-            return jsonify({"status": "SUCCESS", "redirect_url": url_for('results', filename=filename)})
+@celery_app.task
+def delete_files(file_paths):
+    """
+    Deletes uploaded files to free up storage.
+    """
+    for file_path in file_paths:
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                print(f"Deleted file: {file_path}")
+            except Exception as e:
+                print(f"Error deleting file {file_path}: {e}")
 
-        elif task.state == 'FAILURE':
-            error_info = str(task.info)
-            logging.error(f"Task failed: {error_info}")
-            return jsonify({"status": "FAILURE", "error": error_info}), 500
+def append_match_explanations(matches_df):
+    """
+    Add GPT-generated match explanations to the DataFrame.
+    """
+    explanations = []
+    for index, row in matches_df.iterrows():
+        guide = row["Guide Profile"]  # Adjust column name as needed
+        student = row["Student Profile"]  # Adjust column name as needed
+        explanation = generate_match_explanation(guide, student)
+        explanations.append(explanation)
 
-        else:
-            return jsonify({"status": task.state})
-
-    except Exception as e:
-        logging.error(f"Error in task_status: {e}")
-        return jsonify({"error": "Failed to retrieve task status"}), 500
-
-@app.route('/results')
-def results():
-    filename = request.args.get("filename")
-    if not filename:
-        return "No file specified!", 400
-
-    return render_template("results.html", filename=filename)
-
-@app.route('/download/<filename>')
-def download_file(filename):
-    try:
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        prospective_file_path = os.path.join(app.config['UPLOAD_FOLDER'], "prospective_students.csv")
-        current_file_path = os.path.join(app.config['UPLOAD_FOLDER'], "current_students.csv")
-
-        # Serve the file
-        if not os.path.exists(file_path):
-            return jsonify({"error": "File not found"}), 404
-
-        response = send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
-
-        # Cleanup the files after download
-        for path in [file_path, prospective_file_path, current_file_path]:
-            if os.path.exists(path):
-                os.remove(path)
-
-        return response
-
-    except Exception as e:
-        logging.error(f"Error during file download: {e}")
-        return jsonify({"error": "Failed to download file"}), 500
-
-if __name__ == "__main__":
-    app.run(debug=True)
+    matches_df["Match Explanation"] = explanations
+    return matches_df
