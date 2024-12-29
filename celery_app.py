@@ -56,11 +56,15 @@ def format_row(row):
     return ', '.join([f"{col}: {row[col]}" for col in columns_to_merge if pd.notna(row[col])])
 
 def api_call(row):
-    response = client.embeddings.create(
-        model="text-embedding-ada-002",
-        input=[row]  # Input must be a list of strings
-    )
-    return response.data[0].embedding
+    try:
+        response = client.embeddings.create(
+            model="text-embedding-ada-002",
+            input=[row]  # Input must be a list of strings
+        )
+        return response.data[0].embedding
+    except Exception as e:
+        print(f"Error generating embedding for input: {row}, Error: {e}")
+        return None
 
 
 
