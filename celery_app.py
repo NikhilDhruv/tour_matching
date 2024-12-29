@@ -47,12 +47,14 @@ columns_to_merge = [
 def format_row(row):
     return ', '.join([f"{col}: {row[col]}" for col in columns_to_merge if pd.notna(row[col])])
 
+
 def api_call(row):
     response = openai.Embedding.create(
         model="text-embedding-ada-002",
         input=row
     )
     return response['data'][0]['embedding']
+
 
 @celery_app.task
 def generate_embeddings_task(prospective_path, current_path):
