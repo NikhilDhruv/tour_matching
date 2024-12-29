@@ -23,6 +23,8 @@ celery_app = Celery(
 
 # Helper function for cosine similarity
 def cosine_similarity(vec1, vec2):
+    if not vec1 or not vec2:
+        return 0
     vec1 = np.array(vec1)
     vec2 = np.array(vec2)
     return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
@@ -47,27 +49,34 @@ columns_to_merge = [
 def format_row(row):
     return ', '.join([f"{col}: {row[col]}" for col in columns_to_merge if pd.notna(row[col])])
 
-
 def api_call(row):
-    response = openai.Embedding.create(
-        model="text-embedding-ada-002",
-        input=row
-    )
-    return response['data'][0]['embedding']
-
+    try:
+        response = openai.Embedding.create(
+            model="text-embedding-ada-002",
+            input=[row]  # Wrap row in a list
+        )
+        return response['data'][0]['embedding']
+    except openai.error.OpenAIError as e:
+        print(f"Error generating embedding for input: {row}, Error: {e}")
+        return None
 
 @celery_app.task
 def generate_embeddings_task(prospective_path, current_path):
     prospective_df = pd.read_csv(prospective_path)
     current_df = pd.read_csv(current_path)
 
+    # Validate required columns
+    required_columns = set(columns_to_merge + ["YOG", "Slate ID"])
+    if not required_columns.issubset(set(prospective_df.columns)) or not required_columns.issubset(set(current_df.columns)):
+        raise ValueError("CSV files are missing required columns.")
+
     # Create text queries for embedding generation
     prospective_df['Text Query'] = prospective_df.apply(format_row, axis=1)
     current_df['Text Query'] = current_df.apply(format_row, axis=1)
 
     # Generate embeddings using OpenAI API
-    prospective_df['Embeddings'] = prospective_df['Text Query'].apply(api_call)
-    current_df['Embeddings'] = current_df['Text Query'].apply(api_call)
+    prospective_df['Embeddings'] = prospective_df['Text Query'].apply(lambda x: api_call(x) or [])
+    current_df['Embeddings'] = current_df['Text Query'].apply(lambda x: api_call(x) or [])
 
     # Add columns for top suggestions
     prospective_df['suggestion_1'] = np.nan
@@ -137,5 +146,6 @@ def append_match_explanations(matches_df):
 
     matches_df["Match Explanation"] = explanations
     return matches_df
+
 
 
