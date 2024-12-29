@@ -4,6 +4,10 @@ import os
 import pandas as pd
 from gpt_utils import generate_match_explanation, append_match_explanations
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -108,15 +112,15 @@ def download_file(filename):
         current_file_path = os.path.join(app.config['UPLOAD_FOLDER'], "current_students.csv")
 
         # Serve the file
+        if not os.path.exists(file_path):
+            return jsonify({"error": "File not found"}), 404
+
         response = send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
 
         # Cleanup the files after download
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        if os.path.exists(prospective_file_path):
-            os.remove(prospective_file_path)
-        if os.path.exists(current_file_path):
-            os.remove(current_file_path)
+        for path in [file_path, prospective_file_path, current_file_path]:
+            if os.path.exists(path):
+                os.remove(path)
 
         return response
 
