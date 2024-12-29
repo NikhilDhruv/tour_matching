@@ -6,6 +6,11 @@ from celery import Celery, current_task
 from dotenv import load_dotenv
 import pandas as pd
 from gpt_utils import generate_match_explanation
+from celery import Celery
+
+app = Celery('celery_app', broker='redis://localhost:6379/0')
+
+
 
 load_dotenv()
 
