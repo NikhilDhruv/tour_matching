@@ -27,3 +27,17 @@ def generate_match_explanation(guide, student):
         temperature=0.7,
     )
     return response["choices"][0]["text"].strip()
+
+def append_match_explanations(matches_df):
+    """
+    Add GPT-generated match explanations to the DataFrame.
+    """
+    explanations = []
+    for index, row in matches_df.iterrows():
+        guide = row["Guide Profile"]  # Adjust column name as needed
+        student = row["Student Profile"]  # Adjust column name as needed
+        explanation = generate_match_explanation(guide, student)
+        explanations.append(explanation)
+
+    matches_df["Match Explanation"] = explanations
+    return matches_df
