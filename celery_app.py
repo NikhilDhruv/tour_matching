@@ -72,18 +72,21 @@ def generate_embeddings_task(prospective_path, current_path):
     # Sort the similarity dataframe by similarity in descending order
     similarity_df = similarity_df.sort_values(by="similarity", ascending=False)
 
-    # Now we want to match the prospective students to guides based on the highest similarity
+    # Initialize a set for tracking paired guides and students
     paired_guides = set()
+    paired_students = set()
     matches = []
 
+    # Now we want to match the prospective students to guides based on the highest similarity
     for _, row in similarity_df.iterrows():
-        # If the guide hasn't been paired yet, pair it with the student
-        if row["guide"] not in paired_guides:
+        # Only pair if both guide and student are not already paired
+        if row["guide"] not in paired_guides and row["prospective_student"] not in paired_students:
             matches.append({
                 "Guide Profile": row["guide"],
                 "Student Profile": row["prospective_student"]
             })
             paired_guides.add(row["guide"])  # Mark this guide as paired
+            paired_students.add(row["prospective_student"])  # Mark this student as paired
 
         # Stop once all prospective students have been paired
         if len(matches) == len(prospective_df):
@@ -117,4 +120,3 @@ def delete_files(file_paths):
                 logging.info(f"Deleted file: {file_path}")
             except Exception as e:
                 logging.error(f"Error deleting file {file_path}: {e}")
-
