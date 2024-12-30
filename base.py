@@ -1,5 +1,5 @@
 from flask import Flask, redirect, url_for, render_template, request, jsonify, send_from_directory, send_file
-from celery_app import generate_embeddings_task, delete_files
+from celery_tasks import generate_embeddings_task, delete_files
 import os
 import pandas as pd
 from gpt_utils import generate_match_explanation, append_match_explanations
