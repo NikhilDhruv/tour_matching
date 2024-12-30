@@ -5,12 +5,6 @@ from celery import Celery
 from dotenv import load_dotenv
 import openai
 from gpt_utils import generate_match_explanation
-from openai import OpenAI
-
-
-load_dotenv()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
 
 # Load environment variables from .env file
 load_dotenv()
@@ -52,38 +46,38 @@ columns_to_merge = [
     'Person Hispanic'
 ]
 
+# Format a row as a single string
 def format_row(row):
     return ', '.join([f"{col}: {row[col]}" for col in columns_to_merge if pd.notna(row[col])])
 
+# Generate embedding using OpenAI API
 def api_call(row):
     try:
-        response = client.embeddings.create(
+        response = openai.Embedding.create(
             model="text-embedding-ada-002",
             input=[row]  # Input must be a list of strings
         )
-        return response.data[0].embedding
-    except Exception as e:
+        return response['data'][0]['embedding']
+    except openai.error.OpenAIError as e:
         print(f"Error generating embedding for input: {row}, Error: {e}")
         return None
 
-
-
-
 @celery_app.task
 def generate_embeddings_task(prospective_path, current_path):
+    # Load CSV files
     prospective_df = pd.read_csv(prospective_path)
     current_df = pd.read_csv(current_path)
 
     # Validate required columns
     required_columns = set(columns_to_merge + ["YOG", "Slate ID"])
-    if not required_columns.issubset(set(prospective_df.columns)) or not required_columns.issubset(set(current_df.columns)):
+    if not required_columns.issubset(prospective_df.columns) or not required_columns.issubset(current_df.columns):
         raise ValueError("CSV files are missing required columns.")
 
     # Create text queries for embedding generation
     prospective_df['Text Query'] = prospective_df.apply(format_row, axis=1)
     current_df['Text Query'] = current_df.apply(format_row, axis=1)
 
-    # Generate embeddings using OpenAI API
+    # Generate embeddings
     prospective_df['Embeddings'] = prospective_df['Text Query'].apply(lambda x: api_call(x) or [])
     current_df['Embeddings'] = current_df['Text Query'].apply(lambda x: api_call(x) or [])
 
@@ -92,9 +86,8 @@ def generate_embeddings_task(prospective_path, current_path):
     prospective_df['suggestion_2'] = np.nan
     prospective_df['suggestion_3'] = np.nan
 
-    # Iterate over prospective students to find top matches
+    # Find top matches for each prospective student
     for i, row in prospective_df.iterrows():
-        # Filter current students by gender and Year of Graduation (YOG)
         filtered_current_df = current_df[
             (current_df["Person Sex"] == row["Person Sex"]) &
             (current_df["YOG"] == row["YOG"])
@@ -103,27 +96,21 @@ def generate_embeddings_task(prospective_path, current_path):
         if filtered_current_df.empty:
             continue
 
-        # Calculate cosine similarities
         similarities = filtered_current_df['Embeddings'].apply(
             lambda x: cosine_similarity(row['Embeddings'], x)
         )
 
-        # Add similarities to the dataframe
         filtered_current_df = filtered_current_df.assign(similarity=similarities)
-
-        # Sort by similarity and get top 3 matches
         top_matches = filtered_current_df.sort_values(by="similarity", ascending=False).head(3)
         top_suggestions = top_matches["Slate ID"].values
 
-        # Update suggestions in the prospective dataframe
         prospective_df.at[i, "suggestion_1"] = top_suggestions[0] if len(top_suggestions) > 0 else np.nan
         prospective_df.at[i, "suggestion_2"] = top_suggestions[1] if len(top_suggestions) > 1 else np.nan
         prospective_df.at[i, "suggestion_3"] = top_suggestions[2] if len(top_suggestions) > 2 else np.nan
 
-    # Drop embeddings and queries for the final output
     prospective_df.drop(columns=["Embeddings", "Text Query"], inplace=True)
 
-    # Save the results to a CSV file
+    # Save the results
     output_path = os.path.join(os.path.dirname(prospective_path), "matched_students.csv")
     prospective_df.to_csv(output_path, index=False)
 
@@ -131,9 +118,6 @@ def generate_embeddings_task(prospective_path, current_path):
 
 @celery_app.task
 def delete_files(file_paths):
-    """
-    Deletes uploaded files to free up storage.
-    """
     for file_path in file_paths:
         if os.path.exists(file_path):
             try:
@@ -143,13 +127,10 @@ def delete_files(file_paths):
                 print(f"Error deleting file {file_path}: {e}")
 
 def append_match_explanations(matches_df):
-    """
-    Add GPT-generated match explanations to the DataFrame.
-    """
     explanations = []
     for index, row in matches_df.iterrows():
-        guide = row["Guide Profile"]  # Adjust column name as needed
-        student = row["Student Profile"]  # Adjust column name as needed
+        guide = row["Guide Profile"]
+        student = row["Student Profile"]
         explanation = generate_match_explanation(guide, student)
         explanations.append(explanation)
 
