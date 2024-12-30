@@ -2,6 +2,7 @@ import openai
 from dotenv import load_dotenv
 import os
 import logging
+from openai.error import OpenAIError
 
 # Load environment variables
 load_dotenv()
@@ -30,7 +31,7 @@ def generate_match_explanation(guide, student):
     """
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-4",  # Or another supported model
+            model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": prompt}
@@ -39,12 +40,9 @@ def generate_match_explanation(guide, student):
             temperature=0.7,
         )
         return response["choices"][0]["message"]["content"].strip()
-    except openai.error.OpenAIError as e:
-        logging.error(f"OpenAI API error: {e}")
-        return "No explanation could be generated due to an API error."
-    except Exception as e:
-        logging.error(f"Unexpected error while generating explanation: {e}")
-        return "No explanation could be generated due to an unexpected error."
+    except OpenAIError as e:
+        logging.error(f"Error generating explanation: {e}")
+        return f"Error generating explanation: {e}"
 
 def append_match_explanations(matches_df):
     """
@@ -63,8 +61,8 @@ def append_match_explanations(matches_df):
             # Generate match explanation using GPT
             explanation = generate_match_explanation(guide, student)
         except Exception as e:
+            logging.error(f"Error generating explanation at index {index}: {e}")
             explanation = f"Error generating explanation: {e}"
-            logging.error(f"Error at index {index}: {e}")
 
         explanations.append(explanation)
 
