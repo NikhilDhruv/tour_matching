@@ -53,14 +53,15 @@ def format_row(row):
 # Generate embedding using OpenAI API
 def api_call(row):
     try:
-        response = openai.Embedding.create(
+        response = client.embeddings.create(
             model="text-embedding-ada-002",
             input=[row]  # Input must be a list of strings
         )
-        return response['data'][0]['embedding']
-    except openai.error.OpenAIError as e:
+        return response.data[0].embedding
+    except Exception as e:  # Catch generic exceptions
         print(f"Error generating embedding for input: {row}, Error: {e}")
         return None
+
 
 @celery_app.task
 def generate_embeddings_task(prospective_path, current_path):
