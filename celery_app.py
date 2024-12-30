@@ -21,13 +21,23 @@ celery_app = Celery(
     backend='redis://localhost:6379/0'
 )
 
-# Helper function for cosine similarity
-def cosine_similarity(vec1, vec2):
-    if not vec1 or not vec2:
-        return 0
-    vec1 = np.array(vec1)
-    vec2 = np.array(vec2)
-    return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+# Helper function for similarity based on the required criteria
+def calculate_similarity(student, guide):
+    """
+    Calculate similarity between a prospective student and a guide
+    based on sex, academic interest, and location.
+    """
+    # 1. Sex similarity (must match)
+    sex_score = 1 if student["Person Sex"] == guide["Person Sex"] else 0
+
+    # 2. Academic Interest similarity (simple match, same field = 1)
+    academic_interest_score = 1 if student["Person Academic Interests"] == guide["Person Academic Interests"] else 0
+
+    # 3. Location similarity (city/state/region)
+    location_score = 1 if student["City"] == guide["City"] else 0
+
+    # Total similarity score is the sum of all individual scores
+    return sex_score + academic_interest_score + location_score
 
 @celery_app.task
 def generate_embeddings_task(prospective_path, current_path):
@@ -37,7 +47,7 @@ def generate_embeddings_task(prospective_path, current_path):
     current_df = pd.read_csv(current_path)
 
     # Validate required columns
-    required_columns = ["Guide Profile", "Student Profile", "Slate ID", "YOG"]
+    required_columns = ["Guide Profile", "Student Profile", "Slate ID", "YOG", "Person Sex", "Person Academic Interests", "City"]
     for df_name, df in [("prospective", prospective_df), ("current", current_df)]:
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
@@ -56,10 +66,8 @@ def generate_embeddings_task(prospective_path, current_path):
     # Calculate similarity scores between all prospective students and current students (guides)
     for _, prospective_student in prospective_df.iterrows():
         for _, guide in current_df.iterrows():
-            prospective_vector = np.array([prospective_student["YOG"]])  # You can add more features here for better matching
-            guide_vector = np.array([guide["YOG"]])  # Same as above for guides
-            
-            similarity = cosine_similarity(prospective_vector, guide_vector)
+            # Calculate similarity based on sex, academic interest, and location
+            similarity = calculate_similarity(prospective_student, guide)
             similarity_scores.append({
                 "prospective_student": prospective_student["Slate ID"],
                 "guide": guide["Slate ID"],
