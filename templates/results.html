@@ -9,6 +9,8 @@ Tour Guide Matching Results
     <h1>Tour Guide Matching Results</h1>
     <p class="mt-4">Your matches have been generated successfully. You can view them below or download the CSV file:</p>
 
+    <!-- Check if results_data exists and is not empty -->
+    {% if results_data %}
     <!-- Table to Display Results -->
     <table id="results-table" class="table table-bordered table-striped">
         <thead>
@@ -28,9 +30,14 @@ Tour Guide Matching Results
             {% endfor %}
         </tbody>
     </table>
+    {% else %}
+    <p class="text-warning mt-4">No results found. Please try again.</p>
+    {% endif %}
 
     <!-- Download and Generate More Matches -->
-    <a href="{{ url_for('download_file', filename=filename) }}" class="btn btn-primary mt-3">Download Matched Students CSV</a>
-    <a href="/" class="btn btn-secondary mt-3">Generate More Matches</a>
+    <div class="mt-4">
+        <a href="{{ url_for('download_file', filename=filename) }}" class="btn btn-primary">Download Matched Students CSV</a>
+        <a href="/" class="btn btn-secondary">Generate More Matches</a>
+    </div>
 </div>
 {% endblock %}
