@@ -50,6 +50,9 @@ def generate_embeddings_task(prospective_path, current_path):
     # Assign the Slate ID of current students to the "Guide Profile"
     current_df["Guide Profile"] = current_df["Slate ID"]
 
+    # Initialize a set to track which guides have been paired
+    paired_guides = set()
+
     # Matching prospective students to current students (guides) based on similarity
     matched_guides = []
     for _, prospective_student in prospective_df.iterrows():
@@ -57,6 +60,9 @@ def generate_embeddings_task(prospective_path, current_path):
         highest_similarity = -1
         
         for _, guide in current_df.iterrows():
+            if guide["Guide Profile"] in paired_guides:
+                continue  # Skip guides that are already paired
+            
             # Compute similarity score based on the provided data
             prospective_vector = np.array([prospective_student["YOG"]])  # Add other relevant features for better matching
             guide_vector = np.array([guide["YOG"]])  # Add other relevant features here for matching
@@ -67,9 +73,12 @@ def generate_embeddings_task(prospective_path, current_path):
                 best_match = guide["Guide Profile"]
                 highest_similarity = similarity
         
-        matched_guides.append(best_match)
+        if best_match:
+            matched_guides.append(best_match)
+            paired_guides.add(best_match)  # Mark the guide as paired
     
-    prospective_df["Guide Profile"] = matched_guides  # Assign matched guides to the prospective students
+    # Ensure that every prospective student gets a matched guide
+    prospective_df["Guide Profile"] = matched_guides
 
     # Now we can append match explanations to the dataframe
     logging.info("Starting to generate match explanations...")
