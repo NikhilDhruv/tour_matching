@@ -5,6 +5,11 @@ import pandas as pd
 from gpt_utils import generate_match_explanation, append_match_explanations
 import logging
 from dotenv import load_dotenv
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+
 
 # Load environment variables
 load_dotenv()
