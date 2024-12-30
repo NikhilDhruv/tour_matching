@@ -4,8 +4,6 @@ import logging
 import openai
 from openai import OpenAIError
 
-
-
 # Load environment variables
 load_dotenv()
 
@@ -32,16 +30,14 @@ def generate_match_explanation(guide, student):
     Explanation (exactly two sentences):
     """
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": prompt}
-            ],
+        # Using the updated API for OpenAI (post v1.0.0)
+        response = openai.Completion.create(
+            model="text-davinci-003",  # Use a suitable model, like text-davinci-003 or gpt-4
+            prompt=prompt,
             max_tokens=60,
             temperature=0.7,
         )
-        return response["choices"][0]["message"]["content"].strip()
+        return response["choices"][0]["text"].strip()  # Return the explanation text
     except OpenAIError as e:
         logging.error(f"Error generating explanation: {e}")
         return f"Error generating explanation: {e}"
