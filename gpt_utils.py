@@ -4,6 +4,7 @@ import os
 import logging
 from openai.error import OpenAIError
 
+
 # Load environment variables
 load_dotenv()
 
