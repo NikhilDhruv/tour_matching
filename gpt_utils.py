@@ -30,9 +30,9 @@ def generate_match_explanation(guide, student):
     Explanation (exactly two sentences):
     """
     try:
-        # Using the updated API for OpenAI (post v1.0.0)
+        # Using the updated API with the newer models (gpt-3.5-turbo or gpt-4)
         response = openai.Completion.create(
-            model="text-davinci-003",  # Use a suitable model, like text-davinci-003 or gpt-4
+            model="gpt-3.5-turbo",  # You can replace this with "gpt-4" for a more powerful model
             prompt=prompt,
             max_tokens=60,
             temperature=0.7,
