@@ -45,20 +45,36 @@ def generate_embeddings_task(prospective_path, current_path):
             for col in missing_columns:
                 df[col] = "N/A"  # Add placeholders
 
-    # Mapping Slate IDs
-    logging.info("Assigning Slate IDs to profiles...")
     # Assign the Slate ID of prospective students to the "Student Profile"
     prospective_df["Student Profile"] = prospective_df["Slate ID"]
     # Assign the Slate ID of current students to the "Guide Profile"
     current_df["Guide Profile"] = current_df["Slate ID"]
 
-    # Combine the data (if necessary)
-    combined_df = pd.concat([prospective_df[["Guide Profile", "Student Profile"]], current_df[["Guide Profile", "Student Profile"]]])
+    # Matching prospective students to current students (guides) based on similarity
+    matched_guides = []
+    for _, prospective_student in prospective_df.iterrows():
+        best_match = None
+        highest_similarity = -1
+        
+        for _, guide in current_df.iterrows():
+            # Compute similarity score based on the provided data
+            prospective_vector = np.array([prospective_student["YOG"]])  # Add other relevant features for better matching
+            guide_vector = np.array([guide["YOG"]])  # Add other relevant features here for matching
+            
+            similarity = cosine_similarity(prospective_vector, guide_vector)
+            
+            if similarity > highest_similarity:
+                best_match = guide["Guide Profile"]
+                highest_similarity = similarity
+        
+        matched_guides.append(best_match)
+    
+    prospective_df["Guide Profile"] = matched_guides  # Assign matched guides to the prospective students
 
-    # Generate descriptions
+    # Now we can append match explanations to the dataframe
     logging.info("Starting to generate match explanations...")
     try:
-        combined_df = append_match_explanations(combined_df)
+        prospective_df = append_match_explanations(prospective_df)
         logging.info("Descriptions generated successfully.")
     except Exception as e:
         logging.error(f"Error generating descriptions: {e}")
@@ -66,7 +82,7 @@ def generate_embeddings_task(prospective_path, current_path):
 
     # Save the results
     output_path = os.path.join(os.path.dirname(prospective_path), "matched_students.csv")
-    combined_df.to_csv(output_path, index=False)
+    prospective_df.to_csv(output_path, index=False)
     logging.info(f"Matched students file saved to {output_path}.")
 
     return {"csv_path": output_path}
