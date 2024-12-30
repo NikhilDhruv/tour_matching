@@ -21,6 +21,10 @@ import openai
 from openai import OpenAIError
 import logging
 
+import openai
+from openai import OpenAIError
+import logging
+
 def generate_match_explanation(guide, student):
     """
     Generate a two-sentence explanation for why a guide and a prospective student are matched.
@@ -36,17 +40,30 @@ def generate_match_explanation(guide, student):
     Explanation (exactly two sentences):
     """
     try:
-        # Using the updated API with the newer models (gpt-3.5-turbo or gpt-4)
-        response = openai.Completion.create(
-            model="gpt-4",  # Use "gpt-4" for better quality if needed
-            prompt=prompt,
+        # Using the updated method for OpenAI v1.0.0 and above
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",  # Use gpt-3.5-turbo or gpt-4 depending on your preference
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": prompt}
+            ],
             max_tokens=60,
             temperature=0.7,
         )
-        return response["choices"][0]["text"].strip()  # Return the explanation text
+        return response["choices"][0]["message"]["content"].strip()  # Return the explanation text
     except OpenAIError as e:
         logging.error(f"Error generating explanation: {e}")
         return f"Error generating explanation: {e}"
+
+
+
+
+
+
+
+
+
+
 
 
 def append_match_explanations(matches_df):
