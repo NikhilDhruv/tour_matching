@@ -107,7 +107,15 @@ def results():
     if not filename:
         return "No file specified!", 400
 
-    return render_template("results.html", filename=filename)
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    if not os.path.exists(file_path):
+        return "File not found!", 404
+
+    # Read the results file to extract descriptions
+    results_df = pd.read_csv(file_path)
+    results_data = results_df.to_dict(orient="records")  # Convert to list of dictionaries
+
+    return render_template("results.html", results_data=results_data, filename=filename)
 
 @app.route('/download/<filename>')
 def download_file(filename):
