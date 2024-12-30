@@ -5,7 +5,9 @@ from celery import Celery
 from dotenv import load_dotenv
 from gpt_utils import generate_match_explanation, append_match_explanations
 import logging
-from openai.error import OpenAIError
+import openai
+from openai import OpenAIError
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
