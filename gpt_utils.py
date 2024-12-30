@@ -1,9 +1,13 @@
 import openai
 from dotenv import load_dotenv
 import os
+import logging
 
 # Load environment variables
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # Set OpenAI API Key (securely fetched from the environment)
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -36,8 +40,11 @@ def generate_match_explanation(guide, student):
         )
         return response["choices"][0]["message"]["content"].strip()
     except openai.error.OpenAIError as e:
-        print(f"Error generating explanation: {e}")
-        return "No explanation could be generated due to an error."
+        logging.error(f"OpenAI API error: {e}")
+        return "No explanation could be generated due to an API error."
+    except Exception as e:
+        logging.error(f"Unexpected error while generating explanation: {e}")
+        return "No explanation could be generated due to an unexpected error."
 
 def append_match_explanations(matches_df):
     """
@@ -57,11 +64,9 @@ def append_match_explanations(matches_df):
             explanation = generate_match_explanation(guide, student)
         except Exception as e:
             explanation = f"Error generating explanation: {e}"
-            print(f"Error at index {index}: {e}")  # Debugging log
+            logging.error(f"Error at index {index}: {e}")
 
         explanations.append(explanation)
 
     matches_df["Match Explanation"] = explanations
     return matches_df
-
-
