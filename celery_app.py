@@ -8,7 +8,6 @@ import logging
 import openai
 from openai import OpenAIError
 
-
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -46,11 +45,20 @@ def generate_embeddings_task(prospective_path, current_path):
             for col in missing_columns:
                 df[col] = "N/A"  # Add placeholders
 
+    # Mapping Slate IDs
+    logging.info("Assigning Slate IDs to profiles...")
+    # Assign the Slate ID of prospective students to the "Student Profile"
+    prospective_df["Student Profile"] = prospective_df["Slate ID"]
+    # Assign the Slate ID of current students to the "Guide Profile"
+    current_df["Guide Profile"] = current_df["Slate ID"]
+
+    # Combine the data (if necessary)
+    combined_df = pd.concat([prospective_df[["Guide Profile", "Student Profile"]], current_df[["Guide Profile", "Student Profile"]]])
+
     # Generate descriptions
     logging.info("Starting to generate match explanations...")
     try:
-        matches_df = prospective_df[["Guide Profile", "Student Profile"]].copy()
-        matches_df = append_match_explanations(matches_df)
+        combined_df = append_match_explanations(combined_df)
         logging.info("Descriptions generated successfully.")
     except Exception as e:
         logging.error(f"Error generating descriptions: {e}")
@@ -58,7 +66,7 @@ def generate_embeddings_task(prospective_path, current_path):
 
     # Save the results
     output_path = os.path.join(os.path.dirname(prospective_path), "matched_students.csv")
-    matches_df.to_csv(output_path, index=False)
+    combined_df.to_csv(output_path, index=False)
     logging.info(f"Matched students file saved to {output_path}.")
 
     return {"csv_path": output_path}
