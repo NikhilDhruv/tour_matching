@@ -33,8 +33,12 @@ def process_matches():
 
         # Validate required columns in the uploaded file
         required_columns = ["Guide Profile", "Student Profile"]
-        if not all(col in matches_df.columns for col in required_columns):
-            return jsonify({"error": f"Missing required columns: {required_columns}"}), 400
+        missing_columns = [col for col in required_columns if col not in matches_df.columns]
+        
+        if missing_columns:
+            # Add missing columns with default placeholder values
+            for col in missing_columns:
+                matches_df[col] = 'N/A'  # Use an appropriate placeholder value
 
         # Generate GPT explanations
         updated_df = append_match_explanations(matches_df)
@@ -48,6 +52,8 @@ def process_matches():
     except Exception as e:
         logging.error(f"Error in process_matches: {e}")
         return jsonify({"error": "Failed to process matches"}), 500
+
+
 
 @app.route('/match_students', methods=['POST'])
 def match_students():
