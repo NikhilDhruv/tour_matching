@@ -7,6 +7,8 @@ from openai import OpenAIError
 # Load environment variables
 load_dotenv()
 
+print(f"Loaded API Key: {os.getenv('OPENAI_API_KEY')}")
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
