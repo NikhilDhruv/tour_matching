@@ -46,15 +46,22 @@ def append_match_explanations(matches_df):
     # Validate required columns
     required_columns = ["Guide Profile", "Student Profile"]
     if not all(col in matches_df.columns for col in required_columns):
-        raise ValueError("Required columns 'Guide Profile' and 'Student Profile' are missing from the DataFrame.")
+        raise ValueError(f"Required columns {required_columns} are missing from the DataFrame.")
 
     explanations = []
     for index, row in matches_df.iterrows():
         guide = row["Guide Profile"]
         student = row["Student Profile"]
-        explanation = generate_match_explanation(guide, student)
+        try:
+            # Generate match explanation using GPT
+            explanation = generate_match_explanation(guide, student)
+        except Exception as e:
+            explanation = f"Error generating explanation: {e}"
+            print(f"Error at index {index}: {e}")  # Debugging log
+
         explanations.append(explanation)
 
     matches_df["Match Explanation"] = explanations
     return matches_df
+
 
