@@ -50,40 +50,52 @@ def generate_embeddings_task(prospective_path, current_path):
     # Assign the Slate ID of current students to the "Guide Profile"
     current_df["Guide Profile"] = current_df["Slate ID"]
 
-    # Initialize a set to track which guides have been paired
-    paired_guides = set()
+    # Initialize a list to store similarity scores
+    similarity_scores = []
 
-    # Matching prospective students to current students (guides) based on similarity
-    matched_guides = []
+    # Calculate similarity scores between all prospective students and current students (guides)
     for _, prospective_student in prospective_df.iterrows():
-        best_match = None
-        highest_similarity = -1
-        
         for _, guide in current_df.iterrows():
-            if guide["Guide Profile"] in paired_guides:
-                continue  # Skip guides that are already paired
-            
-            # Compute similarity score based on the provided data
-            prospective_vector = np.array([prospective_student["YOG"]])  # Add other relevant features for better matching
-            guide_vector = np.array([guide["YOG"]])  # Add other relevant features here for matching
+            prospective_vector = np.array([prospective_student["YOG"]])  # You can add more features here for better matching
+            guide_vector = np.array([guide["YOG"]])  # Same as above for guides
             
             similarity = cosine_similarity(prospective_vector, guide_vector)
-            
-            if similarity > highest_similarity:
-                best_match = guide["Guide Profile"]
-                highest_similarity = similarity
-        
-        if best_match:
-            matched_guides.append(best_match)
-            paired_guides.add(best_match)  # Mark the guide as paired
-    
-    # Ensure that every prospective student gets a matched guide
-    prospective_df["Guide Profile"] = matched_guides
+            similarity_scores.append({
+                "prospective_student": prospective_student["Slate ID"],
+                "guide": guide["Slate ID"],
+                "similarity": similarity
+            })
 
-    # Now we can append match explanations to the dataframe
+    # Convert the list of similarity scores to a DataFrame
+    similarity_df = pd.DataFrame(similarity_scores)
+
+    # Sort the similarity dataframe by similarity in descending order
+    similarity_df = similarity_df.sort_values(by="similarity", ascending=False)
+
+    # Now we want to match the prospective students to guides based on the highest similarity
+    paired_guides = set()
+    matches = []
+
+    for _, row in similarity_df.iterrows():
+        # If the guide hasn't been paired yet, pair it with the student
+        if row["guide"] not in paired_guides:
+            matches.append({
+                "Guide Profile": row["guide"],
+                "Student Profile": row["prospective_student"]
+            })
+            paired_guides.add(row["guide"])  # Mark this guide as paired
+
+        # Stop once all prospective students have been paired
+        if len(matches) == len(prospective_df):
+            break
+
+    # Create a DataFrame from the matched pairs
+    matched_df = pd.DataFrame(matches)
+
+    # Generate match explanations
     logging.info("Starting to generate match explanations...")
     try:
-        prospective_df = append_match_explanations(prospective_df)
+        matched_df = append_match_explanations(matched_df)
         logging.info("Descriptions generated successfully.")
     except Exception as e:
         logging.error(f"Error generating descriptions: {e}")
@@ -91,7 +103,7 @@ def generate_embeddings_task(prospective_path, current_path):
 
     # Save the results
     output_path = os.path.join(os.path.dirname(prospective_path), "matched_students.csv")
-    prospective_df.to_csv(output_path, index=False)
+    matched_df.to_csv(output_path, index=False)
     logging.info(f"Matched students file saved to {output_path}.")
 
     return {"csv_path": output_path}
@@ -105,3 +117,4 @@ def delete_files(file_paths):
                 logging.info(f"Deleted file: {file_path}")
             except Exception as e:
                 logging.error(f"Error deleting file {file_path}: {e}")
+
