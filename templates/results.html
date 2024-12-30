@@ -9,8 +9,25 @@ Tour Guide Matching Results
     <h1>Tour Guide Matching Results</h1>
     <p class="mt-4">Your matches have been generated successfully. You can view them below or download the CSV file:</p>
 
-    <!-- Table Placeholder -->
-    <table id="results-table" class="display" style="width:100%"></table>
+    <!-- Table to Display Results -->
+    <table id="results-table" class="table table-bordered table-striped">
+        <thead>
+            <tr>
+                <th>Guide Profile</th>
+                <th>Student Profile</th>
+                <th>Match Explanation</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in results_data %}
+            <tr>
+                <td>{{ row['Guide Profile'] }}</td>
+                <td>{{ row['Student Profile'] }}</td>
+                <td>{{ row['Match Explanation'] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 
     <!-- Download and Generate More Matches -->
     <a href="{{ url_for('download_file', filename=filename) }}" class="btn btn-primary mt-3">Download Matched Students CSV</a>
