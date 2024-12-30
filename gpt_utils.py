@@ -1,8 +1,9 @@
-import openai
 from dotenv import load_dotenv
 import os
 import logging
-from openai.error import OpenAIError
+import openai
+from openai import OpenAIError
+
 
 
 # Load environment variables
