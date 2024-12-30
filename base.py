@@ -31,6 +31,11 @@ def process_matches():
 
         matches_df = pd.read_csv(file)
 
+        # Validate required columns in the uploaded file
+        required_columns = ["Guide Profile", "Student Profile"]
+        if not all(col in matches_df.columns for col in required_columns):
+            return jsonify({"error": f"Missing required columns: {required_columns}"}), 400
+
         # Generate GPT explanations
         updated_df = append_match_explanations(matches_df)
 
