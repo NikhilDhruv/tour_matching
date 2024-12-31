@@ -27,43 +27,40 @@ import logging
 
 def generate_match_explanation(guide, student):
     """
-    Generate a two-sentence explanation for why a guide and a prospective student are matched.
+    Generate a detailed explanation for why a guide and a student are a good match.
     """
-    prompt = f"""
-    A tour guide and a prospective student have been matched based on their profiles.
-    Provide a concise, two-sentence explanation for why they are a good match.
-    Here are the details:
+    explanation_parts = []
 
-    Tour Guide: {guide}
-    Prospective Student: {student}
+    # Gender Match
+    if guide.get("Person Sex") == student.get("Person Sex"):
+        explanation_parts.append("Both the tour guide and prospective student share the same gender, ensuring a comfortable and relatable tour experience.")
 
-    Explanation (exactly two sentences):
-    """
-    try:
-        # Using the updated method for OpenAI v1.0.0 and above
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # Use gpt-3.5-turbo or gpt-4 depending on your preference
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=60,
-            temperature=0.7,
+    # Academic Interest Match
+    if guide.get("Person Academic Interests") == student.get("Person Academic Interests"):
+        explanation_parts.append(
+            f"The guide's background in {guide['Person Academic Interests']} aligns with the student's academic interests, providing opportunities for in-depth discussions."
         )
-        return response["choices"][0]["message"]["content"].strip()  # Return the explanation text
-    except OpenAIError as e:
-        logging.error(f"Error generating explanation: {e}")
-        return f"Error generating explanation: {e}"
 
+    # Extracurricular Interest Match
+    if guide.get("Person Extra-Curricular Interest") == student.get("Person Extra-Curricular Interest"):
+        explanation_parts.append(
+            f"Both share a passion for {guide['Person Extra-Curricular Interest']}, creating a connection through shared extracurricular enthusiasm."
+        )
 
+    # Location Match
+    if guide.get("City") == student.get("City"):
+        explanation_parts.append(
+            f"Being from the same city ({guide['City']}), the guide can offer valuable insights into navigating the area and transitioning to campus life."
+        )
 
+    # Default Explanation if no specific matches
+    if not explanation_parts:
+        explanation_parts.append(
+            "The guide's extensive experience and friendly demeanor make them a great match for the student's tour experience."
+        )
 
-
-
-
-
-
-
+    # Combine parts into a single explanation
+    return " ".join(explanation_parts)
 
 
 def append_match_explanations(matches_df):
