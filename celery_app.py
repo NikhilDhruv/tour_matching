@@ -21,23 +21,20 @@ celery_app = Celery(
     backend='redis://localhost:6379/0'
 )
 
-# Helper function for similarity based on the required criteria
-def calculate_similarity(student, guide):
-    """
-    Calculate similarity between a prospective student and a guide
-    based on sex, academic interest, and location.
-    """
-    # 1. Sex similarity (must match)
-    sex_score = 1 if student["Person Sex"] == guide["Person Sex"] else 0
+def cosine_similarity(vec1, vec2):
+    if vec1 is None or vec2 is None:
+        return None
+    vec1 = np.array(vec1)
+    vec2 = np.array(vec2)
+    return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
 
-    # 2. Academic Interest similarity (simple match, same field = 1)
-    academic_interest_score = 1 if student["Person Academic Interests"] == guide["Person Academic Interests"] else 0
-
-    # 3. Location similarity (city/state/region)
-    location_score = 1 if student["City"] == guide["City"] else 0
-
-    # Total similarity score is the sum of all individual scores
-    return sex_score + academic_interest_score + location_score
+def format_row(row):
+    columns_to_merge = [
+        'Res Status', 'Person Sex', 'Person Academic Interests',
+        'Person Extra-Curricular Interest', 'Sport1', 'Sport2', 'Sport3',
+        'City', 'State/Region', 'Country', 'School', 'Person Race', 'Person Hispanic'
+    ]
+    return ', '.join([f"{col}: {row[col]}" for col in columns_to_merge if pd.notna(row[col])])
 
 @celery_app.task
 def generate_embeddings_task(prospective_path, current_path):
@@ -46,81 +43,66 @@ def generate_embeddings_task(prospective_path, current_path):
     prospective_df = pd.read_csv(prospective_path)
     current_df = pd.read_csv(current_path)
 
-    # Validate required columns
-    required_columns = ["Guide Profile", "Student Profile", "Slate ID", "YOG", "Person Sex", "Person Academic Interests", "City"]
-    for df_name, df in [("prospective", prospective_df), ("current", current_df)]:
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            logging.warning(f"{df_name} CSV is missing columns: {missing_columns}")
-            for col in missing_columns:
-                df[col] = "N/A"  # Add placeholders
+    # Format rows into text queries for embedding
+    prospective_df['Text Query'] = prospective_df.apply(format_row, axis=1)
+    current_df['Text Query'] = current_df.apply(format_row, axis=1)
 
-    # Assign the Slate ID of prospective students to the "Student Profile"
-    prospective_df["Student Profile"] = prospective_df["Slate ID"]
-    # Assign the Slate ID of current students to the "Guide Profile"
-    current_df["Guide Profile"] = current_df["Slate ID"]
+    # Generate embeddings using OpenAI API
+    prospective_df['Embeddings'] = prospective_df['Text Query'].apply(api_call)
+    current_df['Embeddings'] = current_df['Text Query'].apply(api_call)
 
-    # Initialize a list to store similarity scores
-    similarity_scores = []
-
-    # Calculate similarity scores between all prospective students and current students (guides)
-    for _, prospective_student in prospective_df.iterrows():
-        for _, guide in current_df.iterrows():
-            # Calculate similarity based on sex, academic interest, and location
-            similarity = calculate_similarity(prospective_student, guide)
-            similarity_scores.append({
-                "prospective_student": prospective_student["Slate ID"],
-                "guide": guide["Slate ID"],
-                "similarity": similarity
-            })
-
-    # Convert the list of similarity scores to a DataFrame
-    similarity_df = pd.DataFrame(similarity_scores)
-
-    # Sort the similarity dataframe by similarity in descending order
-    similarity_df = similarity_df.sort_values(by="similarity", ascending=False)
-
-    # Initialize a set for tracking paired guides and students
-    paired_guides = set()
-    paired_students = set()
     matches = []
 
-    # Now we want to match the prospective students to guides based on the highest similarity
-    for _, row in similarity_df.iterrows():
-        # Only pair if both guide and student are not already paired
-        if row["guide"] not in paired_guides and row["prospective_student"] not in paired_students:
+    for _, prospective_row in prospective_df.iterrows():
+        # Filter current students by matching sex and YOG
+        filtered_current_df = current_df[
+            (current_df["Person Sex"] == prospective_row["Person Sex"]) &
+            (current_df["YOG"] == prospective_row["YOG"])
+        ]
+
+        if filtered_current_df.empty:
+            continue
+
+        # Calculate cosine similarity for embeddings
+        filtered_current_df["similarity"] = filtered_current_df["Embeddings"].apply(
+            lambda x: cosine_similarity(prospective_row["Embeddings"], x)
+        )
+
+        # Sort by similarity in descending order and select top 3 matches
+        top_matches = filtered_current_df.sort_values(by="similarity", ascending=False).head(3)
+
+        for _, match_row in top_matches.iterrows():
             matches.append({
-                "Guide Profile": row["guide"],
-                "Student Profile": row["prospective_student"]
+                "Guide Profile": match_row["Slate ID"],
+                "Student Profile": prospective_row["Slate ID"],
+                "similarity": match_row["similarity"]
             })
-            paired_guides.add(row["guide"])  # Mark this guide as paired
-            paired_students.add(row["prospective_student"])  # Mark this student as paired
 
-        # Stop once all prospective students have been paired
-        if len(matches) == len(prospective_df):
-            break
-
-    # Create a DataFrame from the matched pairs
-    matched_df = pd.DataFrame(matches)
+    matches_df = pd.DataFrame(matches)
 
     # Generate match explanations
-    logging.info("Starting to generate match explanations...")
+    logging.info("Generating match explanations...")
     try:
-        matched_df = append_match_explanations(matched_df)
-        logging.info("Descriptions generated successfully.")
+        matches_df = append_match_explanations(matches_df)
+        logging.info("Match explanations added successfully.")
     except Exception as e:
-        logging.error(f"Error generating descriptions: {e}")
-        raise
+        logging.error(f"Error generating explanations: {e}")
 
-    # Save the results
+    # Save matches to CSV
     output_path = os.path.join(os.path.dirname(prospective_path), "matched_students.csv")
-    matched_df.to_csv(output_path, index=False)
-    logging.info(f"Matched students file saved to {output_path}.")
+    matches_df.to_csv(output_path, index=False)
+    logging.info(f"Matched students saved to {output_path}")
 
     return {"csv_path": output_path}
 
 @celery_app.task
 def delete_files(file_paths):
+    """
+    Deletes a list of files from the filesystem.
+
+    Args:
+        file_paths (list): A list of file paths to delete.
+    """
     for file_path in file_paths:
         if os.path.exists(file_path):
             try:
@@ -128,3 +110,25 @@ def delete_files(file_paths):
                 logging.info(f"Deleted file: {file_path}")
             except Exception as e:
                 logging.error(f"Error deleting file {file_path}: {e}")
+
+
+def api_call(row):
+    """
+    Calls the OpenAI API to generate text embeddings.
+
+    Args:
+        row (str): The text query to generate embeddings for.
+
+    Returns:
+        list: The generated embedding vector or None if an error occurs.
+    """
+    try:
+        response = openai.Embedding.create(
+            model="text-embedding-ada-002",
+            input=row
+        )
+        return response.data[0].embedding
+    except Exception as e:
+        logging.error(f"Error in API call for row: {row}. Exception: {e}")
+        return None
+
